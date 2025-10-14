@@ -1,0 +1,21 @@
+{
+  "name": "pecunity-protocol",
+  "version": "1.0.0",
+  "description": "This is a Hardhat project for the Pecunity protocol. It contains the smart contracts for the protocol, as well as the scripts to deploy them.",
+  "main": "index.js",
+  "author": "3Blocks",
+  "license": "MIT",
+  "scripts": {
+    "test": "hardhat test",
+    "compile": "hardhat compile ",
+    "verify": "npx hardhat ignition verify chain-$CHAIN_ID --include-unrelated-contracts",
+    "deploy:token": "hardhat compile && hardhat run scripts/deploy-token.ts --network $NETWORK"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
+    "hardhat": "^2.26.3"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.4.0"
+  }
+}

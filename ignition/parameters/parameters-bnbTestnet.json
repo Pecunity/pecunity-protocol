@@ -1,0 +1,6 @@
+{
+  "PecunityTokenModule": {
+    "MAX_TOKEN_SUPPLY": "25000000000000000000000000",
+    "pecunityWallet": "0xd4Fa4ee93D7D27c1c4Be36bfBa67183dD4320123"
+  }
+}
