@@ -20,15 +20,15 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
  * @title TokenLaunchpad
  * @notice Launchpad contract with hyperbolic bonding curve pricing and vesting mechanism
  *
- * Features:
- * - Hyperbolic price curve: price = startPrice + (endPrice - startPrice) × supply / (scale + supply)
- * - Start price: 0.022 USD (2.2 cents)
- * - End price (asymptote): 0.044 USD (4.4 cents)
- * - Total tokens for sale: 2,500,000 tokens
- * - Payment in USDC (6 decimals)
- * - Users pay average price between start and end of purchase
- * - 25% immediate claim after sale ends
- * - 75% vested monthly over 12 months
+ * @dev Key features:
+ *      - Hyperbolic price curve:
+ *            price(s) = minPrice + (maxPrice - minPrice) * s / (scale + s)
+ *      - Users pay the *average* price between `s` and `s + amount` for their purchase.
+ *      - Basic vesting: immediate percent released, remainder vested linearly in monthly steps.
+ *      - Uses OpenZeppelin `SafeERC20`, `Ownable`, and `ReentrancyGuard`.
+ *
+ *      NOTE: This contract contains no pause, blacklist, or oracle. Owner controls key params
+ *      and can withdraw collected payment tokens and unsold sale tokens after the sale ends.
  */
 contract TokenLaunchpad is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -37,25 +37,51 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
     // ┃       Constants        ┃
     // ┗━━━━━━━━━━━━━━━━━━━━━━━━┛
 
+    /// @notice Number of seconds considered one month for vesting math (30 days)
     uint256 public constant MONTH_IN_SECONDS = 30 days;
-    uint256 public constant PRICE_PRECISION = 1e6; // USDC has 6 decimals
-    uint256 public constant TOKEN_DECIMALS = 1e18; // ERC20 standard 18 decimals
+
+    /// @notice price / payment token precision (USDC = 6 decimals)
+    uint256 public constant PRICE_PRECISION = 1e6;
+
+    /// @notice sale token decimals (token is expected to be 18 decimals)
+    uint256 public constant TOKEN_DECIMALS = 1e18;
 
     // ┏━━━━━━━━━━━━━━━━━━━━━━━━┓
     // ┃         Structs        ┃
     // ┗━━━━━━━━━━━━━━━━━━━━━━━━┛
 
+    /**
+     * @notice Stores per-account purchase & claim state
+     * @param totalTokens Total tokens purchased (18 decimals)
+     * @param claimed Total tokens already claimed (18 decimals)
+     * @param lastClaimTime Timestamp of the last claim (seconds)
+     */
     struct Purchase {
         uint256 totalTokens;
         uint256 claimed;
         uint256 lastClaimTime;
     }
 
+    /**
+     * @notice Vesting configuration
+     * @param immediateReleasePercent Percentage (0-100) released immediately after sale end
+     * @param vestingDuration Vesting duration in months for the remaining tokens
+     */
     struct VestingParameter {
         uint256 immediateReleasePercent;
         uint256 vestingDuration;
     }
 
+    /**
+     * @notice Core launchpad parameters
+     * @param startTime Sale start timestamp (seconds)
+     * @param endTime Sale end timestamp (seconds)
+     * @param maxTokenForSale Maximum tokens available for sale (18 decimals)
+     * @param tokenSold Number of tokens sold so far (18 decimals)
+     * @param minPrice Minimum price / floor (in payment token decimals, e.g. USDC 6 decimals)
+     * @param maxPrice Asymptotic maximum price (in payment token decimals)
+     * @param scaleFactor Scale factor `k` used in hyperbolic formula (18-decimal tokens)
+     */
     struct TokenLaunchpadParameter {
         uint256 startTime;
         uint256 endTime;
@@ -70,19 +96,40 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
     // ┃         State Vars        ┃
     // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
+    /// @notice Token being sold (PECUNITY)
     IERC20 public saleToken;
+
+    /// @notice Payment token (expected USDC-like with 6 decimals)
     IERC20 public paymentToken;
 
+    /// @notice Launch parameters (see TokenLaunchpadParameter)
     TokenLaunchpadParameter public launchpadParams;
+
+    /// @notice Vesting parameters
     VestingParameter public vestingParams;
 
+    /// @notice Mapping of buyer => purchase info
     mapping(address account => Purchase purchaseInfo) public purchases;
 
     // ┏━━━━━━━━━━━━━━━━━━━━━━━┓
     // ┃         Events        ┃
     // ┗━━━━━━━━━━━━━━━━━━━━━━━┛
 
+    /**
+     * @notice Emitted when sale is initialized and tokens are deposited
+     * @param params The `TokenLaunchpadParameter` struct after initialization
+     */
     event SaleInitialized(TokenLaunchpadParameter params);
+
+    /**
+     * @notice Emitted when a buyer purchases tokens
+     * @param buyer Address of purchaser
+     * @param tokenAmount Number of tokens purchased (18 decimals)
+     * @param startPrice Token price at start of the purchase (payment token decimals)
+     * @param endPrice Token price at end of the purchase (payment token decimals)
+     * @param averagePrice Average token price used for this purchase (payment token decimals)
+     * @param usdcAmount Payment amount transferred (payment token decimals)
+     */
     event TokensPurchased(
         address indexed buyer,
         uint256 tokenAmount,
@@ -91,7 +138,18 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
         uint256 averagePrice,
         uint256 usdcAmount
     );
+
+    /**
+     * @notice Emitted when a buyer claims tokens
+     * @param buyer Address claiming tokens
+     * @param amount Amount of tokens claimed (18 decimals)
+     */
     event TokensClaimed(address indexed buyer, uint256 amount);
+
+    /**
+     * @notice Emitted when sale tokens are deposited by owner during initialization
+     * @param amount Amount deposited (18 decimals)
+     */
     event TokensDeposited(uint256 amount);
 
     // ┏━━━━━━━━━━━━━━━━━━━━━━┓
@@ -110,6 +168,16 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
     // ┃     Constructor        ┃
     // ┗━━━━━━━━━━━━━━━━━━━━━━━━┛
 
+    /**
+     * @notice Construct the launchpad
+     * @param _saleToken Address of the token being sold (must be ERC20)
+     * @param _paymentToken Address of the payment token (USDC-like ERC20)
+     * @param _minPrice Minimum price per token (payment token decimals)
+     * @param _maxPrice Asymptotic maximum price per token (payment token decimals)
+     * @param _scaleFactor Scale parameter `k` used by the bonding curve
+     * @param _immediateReleasePercent Percent released immediately after sale (0-100)
+     * @param _vestingDuration Vesting duration in months for the remaining tokens
+     */
     constructor(
         address _saleToken,
         address _paymentToken,
@@ -156,6 +224,13 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
     // ┃     Admin Functions        ┃
     // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
+    /**
+     * @notice Initialize the sale period and deposit `maxTokensForSale` to the contract.
+     * @dev Owner must `approve` the contract to transfer `maxTokensForSale` before calling.
+     * @param startTime Sale start timestamp (seconds)
+     * @param endTime Sale end timestamp (seconds)
+     * @param maxTokensForSale Amount of sale tokens to deposit for sale (18 decimals)
+     */
     function initializeSale(
         uint256 startTime,
         uint256 endTime,
@@ -175,7 +250,8 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Withdraw USDC collected from sales (only owner)
+     * @notice Withdraw collected payment tokens (USDC) to owner.
+     * @dev Only callable by owner.
      */
     function withdrawPaymentTokens() external onlyOwner {
         uint256 balance = paymentToken.balanceOf(address(this));
@@ -184,7 +260,8 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Withdraw unsold tokens after sale ends (only owner)
+     * @notice Withdraw any unsold sale tokens after the sale ends.
+     * @dev Only callable by owner after `endTime`.
      */
     function withdrawUnsoldTokens() external onlyOwner {
         require(block.timestamp > launchpadParams.endTime, "Sale not ended");
@@ -199,11 +276,10 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
     // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
     /**
-     * @dev Purchase tokens with USDC
-     * Uses hyperbolic bonding curve for pricing
-     * User pays average price between start and end of purchase
-     *
-     * @param tokenAmount Amount of tokens to purchase (in wei, 18 decimals)
+     * @notice Buy `tokenAmount` of sale tokens by paying with `paymentToken`.
+     * @dev The buyer pays the average price between current supply and supply + tokenAmount.
+     *      This function does not refund excess `paymentToken` — the exact calculated cost must be provided.
+     * @param tokenAmount Number of sale tokens to purchase (18 decimals)
      */
     function buyTokens(uint256 tokenAmount) external nonReentrant {
         require(
@@ -251,8 +327,10 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Claim available tokens
-     * First call claims 25% immediately, subsequent calls claim vested tokens
+     * @notice Claim available vested tokens after sale end.
+     * @dev First claim releases `vestingParams.immediateReleasePercent` of totalTokens.
+     *      Remaining tokens vest monthly over `vestingParams.vestingDuration` months.
+     *      The function uses `getClaimableAmount` to determine claimable tokens.
      */
     function claimTokens() external nonReentrant {
         require(
@@ -271,16 +349,15 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
         emit TokensClaimed(msg.sender, claimable);
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // View Functions
-    // ═══════════════════════════════════════════════════════════════════════
+    // ┏━━━━━━━━━━━━━━━━━━━━━━━━┓
+    // ┃     View Functions     ┃
+    // ┗━━━━━━━━━━━━━━━━━━━━━━━━┛
 
     /**
-     * @dev Calculate current token price using hyperbolic bonding curve
-     * Formula: price = minPrice + (maxPrice - minPrice) × supply / (scale + supply)
-     *
-     * @param currentSupply Current number of tokens sold
-     * @return price Price per token in USDC (6 decimals)
+     * @notice Calculate current token price using hyperbolic bonding curve.
+     * @dev price = minPrice + (maxPrice - minPrice) * currentSupply / (scale + currentSupply)
+     * @param currentSupply Current number of tokens sold (18 decimals)
+     * @return price Price per token in payment token decimals (e.g. USDC 6 decimals)
      */
     function getCurrentPrice(
         uint256 currentSupply
@@ -303,14 +380,13 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Calculate cost for buying tokens using average price method
-     * Returns the start price, end price, average price, and total cost in USDC
-     *
-     * @param amount Amount of tokens to buy (in wei, 18 decimals)
-     * @return startPrice Price at start of purchase (USDC 6 decimals)
-     * @return endPrice Price at end of purchase (USDC 6 decimals)
-     * @return averagePrice Average price for this purchase (USDC 6 decimals)
-     * @return totalCost Total cost in USDC (6 decimals)
+     * @notice Calculate cost for buying `amount` tokens using average-price method.
+     * @dev Returns (startPrice, endPrice, averagePrice, totalCost)
+     * @param amount Amount of tokens to buy (18 decimals)
+     * @return startPrice Price at start of purchase (payment token decimals)
+     * @return endPrice Price at end of purchase (payment token decimals)
+     * @return averagePrice Average price used for calculation (payment token decimals)
+     * @return totalCost Total cost in payment token units (e.g. USDC 6 decimals)
      */
     function calculatePurchaseCost(
         uint256 amount
@@ -346,11 +422,9 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Calculate claimable tokens for a user
-     * Includes immediate release (25%) and vested amount
-     *
-     * @param user Address of the user
-     * @return claimable Amount of tokens that can be claimed
+     * @notice Calculate claimable tokens for a given `user` at current time.
+     * @param user Address of purchaser
+     * @return claimable Amount of tokens that can be claimed right now (18 decimals)
      */
     function getClaimableAmount(address user) public view returns (uint256) {
         Purchase memory purchase = purchases[user];
@@ -385,7 +459,12 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Get purchase information for a user
+     * @notice Get purchase information for a user.
+     * @param user Address to query
+     * @return totalTokens Total purchased tokens (18 decimals)
+     * @return claimed Already claimed tokens (18 decimals)
+     * @return claimable Tokens currently claimable (18 decimals)
+     * @return lastClaimTime Timestamp of last claim
      */
     function getPurchaseInfo(
         address user
@@ -409,7 +488,8 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Get current sale parameters
+     * @notice Get current sale parameters.
+     * @return TokenLaunchpadParameter struct representing sale configuration and state.
      */
     function getSaleParameters()
         external
@@ -419,6 +499,10 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
         return launchpadParams;
     }
 
+    /**
+     * @notice Get vesting parameters.
+     * @return VestingParameter struct representing vesting configuration.
+     */
     function getVestingParameter()
         external
         view
@@ -428,14 +512,16 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Get remaining tokens available for sale
+     * @notice Get remaining tokens available for sale.
+     * @return Number of tokens still available (18 decimals)
      */
     function getRemainingTokens() external view returns (uint256) {
         return launchpadParams.maxTokenForSale - launchpadParams.tokenSold;
     }
 
     /**
-     * @dev Check if sale is currently active
+     * @notice Check if sale is currently active.
+     * @return True if now is between startTime and endTime (inclusive).
      */
     function isSaleActive() external view returns (bool) {
         return

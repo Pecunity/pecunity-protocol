@@ -180,4 +180,26 @@ describe("TokenLaunchpad", () => {
       ).to.be.equal(purchaseTokens);
     });
   });
+
+  describe("Vesting phase", async () => {
+    it("should the initial amount claimable", async () => {
+      const { pecunityLaunchpad, pecunityToken } = await loadFixture(
+        deployPecunityLaunchPadFixture
+      );
+
+      const maxTokensSold = parseEther("2500000");
+
+      const start = Math.round(Date.now() / 1000) + 10;
+      const end = start + 5 * 60;
+
+      //approve launchpad for the tokens
+      await pecunityToken.approve(
+        pecunityLaunchpad.getAddress(),
+        maxTokensSold
+      );
+
+      //initialize the sale
+      await pecunityLaunchpad.initializeSale(start, end, maxTokensSold);
+    });
+  });
 });

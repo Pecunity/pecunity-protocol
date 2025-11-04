@@ -2,5 +2,14 @@
   "PecunityTokenModule": {
     "MAX_TOKEN_SUPPLY": "25000000000000000000000000",
     "pecunityWallet": "0x353527391365b7589503eCfFcafDFBAFf0a24D1B"
+  },
+  "PecunityLaunchpadModule": {
+    "saleToken": "0x413c2834f02003752d6Cc0Bcd1cE85Af04D62fBE",
+    "paymentToken": "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+    "minPrice": 22000,
+    "maxPrice": 56000,
+    "scaleFactor": "1500000000000000000000000",
+    "immediateReleasePercent": 25,
+    "vestingDuration": 6
   }
 }

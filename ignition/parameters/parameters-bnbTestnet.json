@@ -5,7 +5,7 @@
   },
   "PecunityLaunchpadModule": {
     "saleToken": "0xe64cBF0C36A726937da2BFC65A09485CA3BD45B5",
-    "paymentToken": "",
+    "paymentToken": "0xE6d59C9B1D7465Fa422296883759b90e20302D84",
     "minPrice": 22000,
     "maxPrice": 56000,
     "scaleFactor": "1500000000000000000000000",

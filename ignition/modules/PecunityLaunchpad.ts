@@ -1,7 +1,7 @@
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 
 const PecunityLaunchpadModule = buildModule("PecunityLaunchpadModule", (m) => {
-  const usdcContract = m.contract("USDC");
+  const usdcContract = m.getParameter("paymentToken");
 
   const minPrice = m.getParameter("minPrice");
   const maxPrice = m.getParameter("maxPrice");
