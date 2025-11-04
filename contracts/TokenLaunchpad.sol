@@ -40,8 +40,8 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
     /// @notice Number of seconds considered one month for vesting math (30 days)
     uint256 public constant MONTH_IN_SECONDS = 30 days;
 
-    /// @notice price / payment token precision (USDC = 6 decimals)
-    uint256 public constant PRICE_PRECISION = 1e6;
+    /// @notice price / payment token precision (USDC = 18 decimals)
+    uint256 public constant PRICE_PRECISION = 1e18;
 
     /// @notice sale token decimals (token is expected to be 18 decimals)
     uint256 public constant TOKEN_DECIMALS = 1e18;
@@ -415,7 +415,7 @@ contract TokenLaunchpad is Ownable, ReentrancyGuard {
         averagePrice = (startPrice + endPrice) / 2;
 
         // Calculate total cost
-        // amount (18 decimals) × averagePrice (6 decimals) / 1e18 = cost (6 decimals)
+        // amount (18 decimals) × averagePrice (18 decimals) / 1e18 = cost (18 decimals)
         totalCost = (amount * averagePrice) / TOKEN_DECIMALS;
 
         return (startPrice, endPrice, averagePrice, totalCost);

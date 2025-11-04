@@ -7,8 +7,8 @@ import { time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 
 const MAX_TOKEN_SUPPLY = parseEther("25000000");
 
-const MIN_PRICE = parseUnits("0.022", 6);
-const MAX_PRICE = parseUnits("0.56", 6);
+const MIN_PRICE = parseUnits("0.022", 18);
+const MAX_PRICE = parseUnits("0.56", 18);
 
 const SCALE_FACTOR = parseEther("1500000");
 const IMMEDIATE_RELEASE_PERCENT = 25;
@@ -165,7 +165,7 @@ describe("TokenLaunchpad", () => {
         purchaseTokens
       );
 
-      console.log(formatUnits(purchaseCost.totalCost, 6));
+      console.log(formatUnits(purchaseCost.totalCost, 18));
 
       await usdcToken.transfer(buyer.address, purchaseCost.totalCost);
 
@@ -181,11 +181,15 @@ describe("TokenLaunchpad", () => {
     });
   });
 
-  describe("Vesting phase", async () => {
-    it("should the initial amount claimable", async () => {
-      const { pecunityLaunchpad, pecunityToken } = await loadFixture(
-        deployPecunityLaunchPadFixture
-      );
+  describe("Withdraw Payment Tokens", async () => {
+    it("should be possible to withdraw as owner the tokens after someone bought", async () => {
+      const {
+        pecunityLaunchpad,
+        pecunityToken,
+        usdcToken,
+        pecunityWallet,
+        buyer,
+      } = await loadFixture(deployPecunityLaunchPadFixture);
 
       const maxTokensSold = parseEther("2500000");
 
@@ -197,9 +201,148 @@ describe("TokenLaunchpad", () => {
         pecunityLaunchpad.getAddress(),
         maxTokensSold
       );
-
       //initialize the sale
       await pecunityLaunchpad.initializeSale(start, end, maxTokensSold);
+      await time.increaseTo(start + 1);
+
+      const purchaseTokens = parseEther("1000");
+
+      const purchaseCost = await pecunityLaunchpad.calculatePurchaseCost(
+        purchaseTokens
+      );
+
+      await usdcToken.transfer(buyer.address, purchaseCost.totalCost);
+
+      //buy the tokens
+      await usdcToken
+        .connect(buyer)
+        .approve(pecunityLaunchpad.getAddress(), purchaseCost.totalCost);
+      await pecunityLaunchpad.connect(buyer).buyTokens(purchaseTokens);
+
+      //withdraw the payment tokens
+
+      const balanceBefore = await usdcToken.balanceOf(pecunityWallet.address);
+
+      await pecunityLaunchpad.connect(pecunityWallet).withdrawPaymentTokens();
+
+      const balanceAfter = await usdcToken.balanceOf(
+        pecunityLaunchpad.getAddress()
+      );
+
+      expect(
+        await usdcToken.balanceOf(pecunityLaunchpad.getAddress())
+      ).to.be.equal(0);
+      expect(
+        await usdcToken.balanceOf(pecunityWallet.address)
+      ).to.be.greaterThan(balanceBefore);
+    });
+  });
+
+  describe("Vesting phase", async () => {
+    it("should the initial amount claimable", async () => {
+      const {
+        pecunityLaunchpad,
+        pecunityToken,
+        usdcToken,
+        pecunityWallet,
+        buyer,
+      } = await loadFixture(deployPecunityLaunchPadFixture);
+
+      const maxTokensSold = parseEther("2500000");
+
+      const start = Math.round(Date.now() / 1000) + 10;
+      const end = start + 5 * 60;
+
+      //approve launchpad for the tokens
+      await pecunityToken.approve(
+        pecunityLaunchpad.getAddress(),
+        maxTokensSold
+      );
+      //initialize the sale
+      await pecunityLaunchpad.initializeSale(start, end, maxTokensSold);
+      await time.increaseTo(start + 1);
+
+      const purchaseTokens = parseEther("1000");
+
+      const purchaseCost = await pecunityLaunchpad.calculatePurchaseCost(
+        purchaseTokens
+      );
+
+      await usdcToken.transfer(buyer.address, purchaseCost.totalCost);
+
+      //buy the tokens
+      await usdcToken
+        .connect(buyer)
+        .approve(pecunityLaunchpad.getAddress(), purchaseCost.totalCost);
+      await pecunityLaunchpad.connect(buyer).buyTokens(purchaseTokens);
+
+      await time.increaseTo(end + 1);
+      await pecunityToken
+        .connect(pecunityWallet)
+        .enableTransfer(pecunityLaunchpad.getAddress());
+
+      const claimable = await pecunityLaunchpad.getPurchaseInfo(buyer.address);
+
+      console.log(hre.ethers.formatEther(claimable.claimable));
+
+      await pecunityLaunchpad.connect(buyer).claimTokens();
+
+      expect(await pecunityToken.balanceOf(buyer.address)).to.be.equal(
+        claimable.claimable
+      );
+    });
+
+    it("should be all claimable after the vesting duration", async () => {
+      const {
+        pecunityLaunchpad,
+        pecunityToken,
+        usdcToken,
+        pecunityWallet,
+        buyer,
+      } = await loadFixture(deployPecunityLaunchPadFixture);
+
+      const maxTokensSold = parseEther("2500000");
+
+      const start = Math.round(Date.now() / 1000) + 10;
+      const end = start + 5 * 60;
+
+      //approve launchpad for the tokens
+      await pecunityToken.approve(
+        pecunityLaunchpad.getAddress(),
+        maxTokensSold
+      );
+      //initialize the sale
+      await pecunityLaunchpad.initializeSale(start, end, maxTokensSold);
+      await time.increaseTo(start + 1);
+
+      const purchaseTokens = parseEther("1000");
+
+      const purchaseCost = await pecunityLaunchpad.calculatePurchaseCost(
+        purchaseTokens
+      );
+
+      await usdcToken.transfer(buyer.address, purchaseCost.totalCost);
+
+      //buy the tokens
+      await usdcToken
+        .connect(buyer)
+        .approve(pecunityLaunchpad.getAddress(), purchaseCost.totalCost);
+      await pecunityLaunchpad.connect(buyer).buyTokens(purchaseTokens);
+
+      await time.increaseTo(end + VESTING_DURATION * 30 * 24 * 60 * 60 + 1);
+      await pecunityToken
+        .connect(pecunityWallet)
+        .enableTransfer(pecunityLaunchpad.getAddress());
+
+      const claimable = await pecunityLaunchpad.getPurchaseInfo(buyer.address);
+
+      expect(claimable.claimable).to.be.equal(purchaseTokens);
+
+      await pecunityLaunchpad.connect(buyer).claimTokens();
+
+      expect(await pecunityToken.balanceOf(buyer.address)).to.be.equal(
+        purchaseTokens
+      );
     });
   });
 });
