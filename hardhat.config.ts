@@ -1,6 +1,8 @@
 import { HardhatUserConfig, vars } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 
+import "./tasks";
+
 const ALCHEMY_API_KEY = vars.get("ALCHEMY_API_KEY");
 const PRIVATE_KEY = vars.get("PRIVATE_KEY");
 const ETHERSCAN_API_KEY = vars.get("ETHERSCAN_API_KEY");
