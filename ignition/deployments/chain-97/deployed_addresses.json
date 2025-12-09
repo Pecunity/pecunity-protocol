@@ -1,3 +1,5 @@
 {
-  "PecunityTokenModule#Pecunity": "0xe64cBF0C36A726937da2BFC65A09485CA3BD45B5"
+  "PecunityTokenModule#Pecunity": "0xe64cBF0C36A726937da2BFC65A09485CA3BD45B5",
+  "PecunityLaunchpadModule#TokenLaunchpad": "0x48B00D198A22901915E720D3070cb89C8F773C01",
+  "PecunityStakingModule#Staking": "0xA7E911086BF70991f32890Be40064026971BB844"
 }

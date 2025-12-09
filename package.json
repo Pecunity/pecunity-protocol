@@ -9,7 +9,9 @@
     "test": "hardhat test",
     "compile": "hardhat compile ",
     "verify": "npx hardhat ignition verify chain-$CHAIN_ID --include-unrelated-contracts",
-    "deploy:token": "hardhat compile && hardhat run scripts/deploy-token.ts --network $NETWORK"
+    "deploy:token": "hardhat compile && hardhat run scripts/deploy-token.ts --network $NETWORK",
+    "deploy:launchpad": "hardhat compile && hardhat run scripts/deploy-launchpad.ts --network $NETWORK",
+    "deploy:staking": "hardhat compile && hardhat run scripts/deploy-staking.ts --network $NETWORK"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^6.1.0",
