@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.28;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ITieredTokenLocker} from "./interfaces/ITieredTokenLocker.sol";
 
 /**
  * @title TieredTokenLocker
@@ -22,65 +23,37 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  * - Non-transferable during lock period
  * - Can add tokens to upgrade tiers
  */
-contract TieredTokenLocker is ReentrancyGuard {
+contract TieredTokenLocker is ReentrancyGuard, ITieredTokenLocker {
     using SafeERC20 for IERC20;
 
-    // Tier enumeration
-    enum Tier {
-        None,
-        Basic,
-        Bronze,
-        Silver,
-        Gold,
-        Diamond
-    }
-
-    // Lock information for each user
-    struct LockInfo {
-        uint256 amount; // Total locked amount
-        uint256 lastDepositTime; // Timestamp of last deposit
-        Tier currentTier; // Current tier level
-        bool exists; // Whether lock exists
-    }
-
-    // Constants
+    // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+    // ┃       Constants           ┃
+    // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
     uint256 public constant LOCK_PERIOD = 120 days;
 
-    // Tier thresholds (in token decimals, assuming 18 decimals)
     uint256 public constant BASIC_THRESHOLD = 500 * 10 ** 18;
     uint256 public constant BRONZE_THRESHOLD = 2500 * 10 ** 18;
     uint256 public constant SILVER_THRESHOLD = 5000 * 10 ** 18;
     uint256 public constant GOLD_THRESHOLD = 30000 * 10 ** 18;
     uint256 public constant DIAMOND_THRESHOLD = 125000 * 10 ** 18;
 
-    // State variables
+    // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+    // ┃     State Variables       ┃
+    // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
     IERC20 public immutable lockedToken;
     mapping(address => LockInfo) public locks;
 
-    // Events
-    event TokensLocked(
-        address indexed user,
-        uint256 amount,
-        Tier newTier,
-        uint256 unlockTime
-    );
-    event TokensAdded(
-        address indexed user,
-        uint256 amount,
-        Tier oldTier,
-        Tier newTier,
-        uint256 newUnlockTime
-    );
-    event TokensUnlocked(address indexed user, uint256 amount);
-    event TierUpgraded(address indexed user, Tier oldTier, Tier newTier);
+    // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+    // ┃       Constructor         ┃
+    // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
     /**
      * @dev Constructor
-     * @param _tokenAddress Address of the ERC20 token to be locked
+     * @param tokenAddress Address of the ERC20 token to be locked
      */
-    constructor(address _tokenAddress) {
-        require(_tokenAddress != address(0), "Invalid token address");
-        lockedToken = IERC20(_tokenAddress);
+    constructor(address tokenAddress) {
+        require(tokenAddress != address(0), "Invalid token address");
+        lockedToken = IERC20(tokenAddress);
     }
 
     /**
@@ -88,9 +61,11 @@ contract TieredTokenLocker is ReentrancyGuard {
      * @param amount Amount of tokens to lock
      */
     function lockTokens(uint256 amount) external nonReentrant {
-        require(amount > 0, "Amount must be greater than 0");
+        if (amount == 0) {
+            revert NonZeroAmount();
+        }
 
-        LockInfo storage userLock = locks[msg.sender];
+        LockInfo memory userLock = locks[msg.sender];
 
         if (userLock.exists) {
             // Adding to existing lock
@@ -102,14 +77,42 @@ contract TieredTokenLocker is ReentrancyGuard {
     }
 
     /**
+     * @dev Unlock and withdraw all locked tokens after lock period
+     */
+    function unlockTokens() external nonReentrant {
+        LockInfo memory userLock = locks[msg.sender];
+
+        if (!userLock.exists) {
+            revert NoExistingLocking();
+        }
+
+        if (block.timestamp < userLock.lastDepositTime + LOCK_PERIOD) {
+            revert LockPeriodNotExpired();
+        }
+
+        uint256 amount = userLock.amount;
+
+        // Delete lock information
+        delete locks[msg.sender];
+
+        // Transfer tokens back to user
+        lockedToken.safeTransfer(msg.sender, amount);
+
+        emit TokensUnlocked(msg.sender, amount);
+    }
+
+    // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+    // ┃    Internal Functions    ┃
+    // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+    /**
      * @dev Create a new lock for the user
      * @param amount Amount of tokens to lock
      */
     function _createLock(uint256 amount) internal {
-        require(
-            amount >= BASIC_THRESHOLD,
-            "Minimum 500 tokens required for Basic tier"
-        );
+        if (amount < BASIC_THRESHOLD) {
+            revert MinimumBasicThreshold();
+        }
 
         // Transfer tokens from user to contract
         lockedToken.safeTransferFrom(msg.sender, address(this), amount);
@@ -156,29 +159,6 @@ contract TieredTokenLocker is ReentrancyGuard {
     }
 
     /**
-     * @dev Unlock and withdraw all locked tokens after lock period
-     */
-    function unlockTokens() external nonReentrant {
-        LockInfo storage userLock = locks[msg.sender];
-
-        require(userLock.exists, "No locked tokens");
-        require(
-            block.timestamp >= userLock.lastDepositTime + LOCK_PERIOD,
-            "Lock period not expired"
-        );
-
-        uint256 amount = userLock.amount;
-
-        // Delete lock information
-        delete locks[msg.sender];
-
-        // Transfer tokens back to user
-        lockedToken.safeTransfer(msg.sender, amount);
-
-        emit TokensUnlocked(msg.sender, amount);
-    }
-
-    /**
      * @dev Calculate tier based on amount
      * @param amount Amount of tokens
      * @return Tier level
@@ -198,6 +178,10 @@ contract TieredTokenLocker is ReentrancyGuard {
             return Tier.None;
         }
     }
+
+    // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+    // ┃    View/Query Functions   ┃
+    // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
     /**
      * @dev Get lock information for a user

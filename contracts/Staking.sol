@@ -185,9 +185,9 @@ contract Staking is Ownable, IStaking {
         _stakingBalances[address(0)] = MAX_STAKING_SUPPLY;
     }
 
-    // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+    // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓
     // ┃    Public Functions      ┃
-    // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+    // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
     /**
      * @notice Stake shares to start earning rewards
