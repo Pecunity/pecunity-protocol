@@ -16,5 +16,9 @@
     "pecunityToken": "0xe64cBF0C36A726937da2BFC65A09485CA3BD45B5",
     "stakingPassToken": "0x5E1d94fa875CBbc83877112893baBa2375607569",
     "duration": 126144000
+  },
+  "PecunityLockingModule": {
+    "lockingToken": "0xe64cBF0C36A726937da2BFC65A09485CA3BD45B5",
+    "lockPeriod": 60
   }
 }

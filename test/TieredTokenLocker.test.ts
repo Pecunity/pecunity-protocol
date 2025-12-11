@@ -7,6 +7,7 @@ import {
 import { expect } from "chai";
 
 const MAX_TOKEN_SUPPLY = parseEther("25000000");
+const LOCK_PERIOD = 60 * 60 * 24 * 30; // 30 days
 
 describe("Locking", () => {
   async function deplouLockingFixture() {
@@ -20,7 +21,7 @@ describe("Locking", () => {
 
     await token.connect(owner).launch();
 
-    const locking = await Locking.deploy(tokenAddress);
+    const locking = await Locking.deploy(tokenAddress, LOCK_PERIOD);
     const lockingAddress = await locking.getAddress();
 
     return { locking, token, owner, user, tokenAddress, lockingAddress };
@@ -102,7 +103,7 @@ describe("Locking", () => {
       await locking.connect(user).lockTokens(diamonAmount);
 
       //increase time
-      await time.increase((await locking.LOCK_PERIOD()) + BigInt(1));
+      await time.increase((await locking.lockPeriod()) + BigInt(1));
 
       expect(await locking.connect(user).unlockTokens()).to.emit(
         locking,
@@ -127,7 +128,7 @@ describe("Locking", () => {
 
       await locking.connect(user).lockTokens(diamonAmount);
 
-      await time.increase((await locking.LOCK_PERIOD()) - BigInt(10));
+      await time.increase((await locking.lockPeriod()) - BigInt(10));
 
       await expect(
         locking.connect(user).unlockTokens()

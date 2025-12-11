@@ -29,7 +29,6 @@ contract TieredTokenLocker is ReentrancyGuard, ITieredTokenLocker {
     // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
     // ┃       Constants           ┃
     // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
-    uint256 public constant LOCK_PERIOD = 120 days;
 
     uint256 public constant BASIC_THRESHOLD = 500 * 10 ** 18;
     uint256 public constant BRONZE_THRESHOLD = 2500 * 10 ** 18;
@@ -41,6 +40,9 @@ contract TieredTokenLocker is ReentrancyGuard, ITieredTokenLocker {
     // ┃     State Variables       ┃
     // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
     IERC20 public immutable lockedToken;
+
+    uint256 public immutable lockPeriod;
+
     mapping(address => LockInfo) public locks;
 
     // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
@@ -51,9 +53,10 @@ contract TieredTokenLocker is ReentrancyGuard, ITieredTokenLocker {
      * @dev Constructor
      * @param tokenAddress Address of the ERC20 token to be locked
      */
-    constructor(address tokenAddress) {
+    constructor(address tokenAddress, uint256 _lockPeriod) {
         require(tokenAddress != address(0), "Invalid token address");
         lockedToken = IERC20(tokenAddress);
+        lockPeriod = _lockPeriod;
     }
 
     /**
@@ -86,7 +89,7 @@ contract TieredTokenLocker is ReentrancyGuard, ITieredTokenLocker {
             revert NoExistingLocking();
         }
 
-        if (block.timestamp < userLock.lastDepositTime + LOCK_PERIOD) {
+        if (block.timestamp < userLock.lastDepositTime + lockPeriod) {
             revert LockPeriodNotExpired();
         }
 
@@ -118,7 +121,7 @@ contract TieredTokenLocker is ReentrancyGuard, ITieredTokenLocker {
         lockedToken.safeTransferFrom(msg.sender, address(this), amount);
 
         Tier tier = _calculateTier(amount);
-        uint256 unlockTime = block.timestamp + LOCK_PERIOD;
+        uint256 unlockTime = block.timestamp + lockPeriod;
 
         locks[msg.sender] = LockInfo({
             amount: amount,
@@ -149,7 +152,7 @@ contract TieredTokenLocker is ReentrancyGuard, ITieredTokenLocker {
         userLock.lastDepositTime = block.timestamp; // Reset lock period
         userLock.currentTier = newTier;
 
-        uint256 newUnlockTime = block.timestamp + LOCK_PERIOD;
+        uint256 newUnlockTime = block.timestamp + lockPeriod;
 
         emit TokensAdded(msg.sender, amount, oldTier, newTier, newUnlockTime);
 
@@ -204,7 +207,7 @@ contract TieredTokenLocker is ReentrancyGuard, ITieredTokenLocker {
             return (0, 0, Tier.None, false);
         }
 
-        unlockTime = userLock.lastDepositTime + LOCK_PERIOD;
+        unlockTime = userLock.lastDepositTime + lockPeriod;
         canUnlock = block.timestamp >= unlockTime;
 
         return (userLock.amount, unlockTime, userLock.currentTier, canUnlock);
@@ -224,7 +227,7 @@ contract TieredTokenLocker is ReentrancyGuard, ITieredTokenLocker {
             return 0;
         }
 
-        uint256 unlockTime = userLock.lastDepositTime + LOCK_PERIOD;
+        uint256 unlockTime = userLock.lastDepositTime + lockPeriod;
 
         if (block.timestamp >= unlockTime) {
             return 0;
