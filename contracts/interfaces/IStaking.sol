@@ -9,9 +9,9 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * @dev Defines all public and external functions, events, and errors
  */
 interface IStaking {
-    // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+    // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓
     // ┃         Events           ┃
-    // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+    // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
     /**
      * @notice Emitted when a user stakes shares
@@ -66,9 +66,9 @@ interface IStaking {
      */
     event RewardsBurned(uint256 amount);
 
-    // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+    // ┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓
     // ┃         Errors           ┃
-    // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+    // ┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
     /**
      * @notice Thrown when attempting a transaction with zero amount

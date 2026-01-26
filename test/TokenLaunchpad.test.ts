@@ -90,7 +90,11 @@ describe("TokenLaunchpad", () => {
 
       const maxTokensSold = parseEther("2500000");
 
-      const start = Math.round(Date.now() / 1000) + 60 * 60;
+      const currentTime = await hre.ethers.provider
+        .getBlock("latest")
+        .then((block) => block?.timestamp || 0);
+
+      const start = currentTime + 60 * 60;
       const end = start + 5 * 60;
 
       //approve launchpad for the tokens
@@ -98,7 +102,7 @@ describe("TokenLaunchpad", () => {
         pecunityLaunchpad.getAddress(),
         maxTokensSold
       );
-      console.log(new Date(Date.now()).toISOString());
+
       //initialize the sale
       await pecunityLaunchpad.initializeSale(start, end, maxTokensSold);
 
@@ -117,7 +121,11 @@ describe("TokenLaunchpad", () => {
 
       const maxTokensSold = parseEther("2500000");
 
-      const start = Math.round(Date.now() / 1000) + 60 * 60;
+      const currentTime = await hre.ethers.provider
+        .getBlock("latest")
+        .then((block) => block?.timestamp || 0);
+
+      const start = currentTime + 60 * 60;
       const end = start + 5 * 60;
 
       //approve launchpad for the tokens
@@ -147,7 +155,11 @@ describe("TokenLaunchpad", () => {
 
       const maxTokensSold = parseEther("2500000");
 
-      const start = Math.round(Date.now() / 1000) + 60 * 60;
+      const currentTime = await hre.ethers.provider
+        .getBlock("latest")
+        .then((block) => block?.timestamp || 0);
+
+      const start = currentTime + 60 * 60;
       const end = start + 5 * 60;
 
       //approve launchpad for the tokens
@@ -193,7 +205,11 @@ describe("TokenLaunchpad", () => {
 
       const maxTokensSold = parseEther("2500000");
 
-      const start = Math.round(Date.now() / 1000) + 60 * 60;
+      const currentTime = await hre.ethers.provider
+        .getBlock("latest")
+        .then((block) => block?.timestamp || 0);
+
+      const start = currentTime + 60 * 60;
       const end = start + 5 * 60;
 
       //approve launchpad for the tokens
@@ -250,7 +266,11 @@ describe("TokenLaunchpad", () => {
 
       const maxTokensSold = parseEther("2500000");
 
-      const start = Math.round(Date.now() / 1000) + 60 * 60;
+      const currentTime = await hre.ethers.provider
+        .getBlock("latest")
+        .then((block) => block?.timestamp || 0);
+
+      const start = currentTime + 60 * 60;
       const end = start + 5 * 60;
 
       //approve launchpad for the tokens
@@ -303,7 +323,11 @@ describe("TokenLaunchpad", () => {
 
       const maxTokensSold = parseEther("2500000");
 
-      const start = Math.round(Date.now() / 1000) + 60 * 60;
+      const currentTime = await hre.ethers.provider
+        .getBlock("latest")
+        .then((block) => block?.timestamp || 0);
+
+      const start = currentTime + 60 * 60;
       const end = start + 5 * 60;
 
       //approve launchpad for the tokens
